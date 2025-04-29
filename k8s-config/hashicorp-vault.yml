@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hashicorp-vault-deployment
+  #namespace: staging
+  labels:
+    app: hashicorp-vault
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hashicorp-vault
+  template:
+    metadata:
+      labels:
+        app: hashicorp-vault
+    spec:
+      imagePullSecrets:
+      - name: ecr-registry-secret
+      containers:
+      - name: hashicorp-vault
+        image: hashicorp/vault:1.19
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8200
+        env:
+        - name: VAULT_ADDR
+          value: "http://0.0.0.0:8200"
+        command: ["vault", "server", "-config", "/vault/config/local.json"]
+        volumeMounts:
+        - name: hashicorp-vault-config-vol
+          mountPath: "/vault/config/local.json"
+          subPath: local.json
+        - name: hashicorp-vault-data-vol
+          mountPath: "/vault/data"
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "500Mi"
+          limits:
+            cpu: "400m"
+            memory: "600Mi"
+        securityContext:
+          capabilities:
+            add: ["IPC_LOCK"]
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - staging-k8s-master-172-16-20-189
+          - weight: 50
+            preference:
+              matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - other-server
+      volumes:
+      - name: hashicorp-vault-config-vol
+        hostPath:
+          path: /home/subash/vault-config/k8s-config/config
+          type: Directory
+      - name: hashicorp-vault-data-vol
+        hostPath:
+          path: /home/subash/vault-config/k8s-config/data/
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hashicorp-vault-svc
+  #namespace: staging
+  labels:
+    app: hashicorp-vault-service
+    managed-by: subash-chaudhary
+spec:
+  selector:
+    app: hashicorp-vault
+  type: NodePort
+  ports:
+    - name: ui-port
+      port: 8200
+      targetPort: 8200
+      nodePort: 8200
+  ipFamilyPolicy: SingleStack
+  ipFamilies: [IPv4]
